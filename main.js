@@ -37,6 +37,11 @@ stage.addEventListener('mousedown', e => {
 
 stage.addEventListener('mouseup', e => {
     state.mousedown = false;
+    
+    if (state.newRegion != null){
+        state.newRegion.addPoint(state.x, state.y);
+        return;
+    }
 
     if (state.highlightedRegion != null){
         state.selectedRegion = state.highlightedRegion;
@@ -48,9 +53,7 @@ stage.addEventListener('mouseup', e => {
         return;
     }
 
-    if (state.newRegion == null){
-        state.newRegion = new Region();
-    }
+    state.newRegion = new Region();
     state.newRegion.addPoint(state.x, state.y);
 });
 
@@ -111,11 +114,25 @@ requestAnimationFrame(draw);
 class Node {
     highlighted = false;
     selected = false;
-    size = 8
+    size = 4
 
     constructor(x, y){
         this.x = x;
         this.y = y;
+    }
+
+    toJSON(){
+        return {
+            x: this.x,
+            y: this.y,
+        };
+    }
+
+    static fromObj(obj){
+        if (!obj.hasOwnProperty("x") || !obj.hasOwnProperty("y")){
+            throw new Error("Node obj must have x and y values");
+        }
+        return new Node(obj.x, obj.y);
     }
 
     isPointInside(ctx, x, y){
@@ -124,12 +141,7 @@ class Node {
 
     path(){
         let path = new Path2D();
-        path.rect(
-            this.x - this.size/2,
-            this.y - this.size/2,
-            this.size,
-            this.size
-        );
+        path.arc(this.x, this.y, this.size, 0, Math.PI*2);
         return path
     }
 
@@ -149,7 +161,24 @@ class Region {
         lastY: 0,
     };
 
-    mouseup() {
+    toJSON(){
+        return {
+            nodes: this.nodes,
+        };
+    }
+
+    static fromJSON(raw){
+        const p = JSON.parse(raw)
+        if (!p.hasOwnProperty("nodes")){
+            throw new Error("no nodes in Region JSON")
+        }
+        let r = new Region();
+        r.nodes = p.nodes.map(n => Node.fromObj(n));
+        r.closed = true;
+        return r;
+    }
+
+    mouseup(){
         this.selectedNode = null;
         this.editMode = null;
     }
@@ -177,18 +206,20 @@ class Region {
 
         case null:
             let n = this.nodes.filter(n => n.isPointInside(ctx, x, y))
-
-            if (n.length == 0){
+            if (n.length > 0){
+                this.editMode = "node";
+                this.selectedNode = n[0];
+                return
+            }
+            
+            if (ctx.isPointInPath(this.path(), x, y)){
                 this.editMode = "move";
                 this.moveState.lastX = x;
                 this.moveState.lastY = y;
                 return
             }
 
-            this.editMode = "node";
-            this.selectedNode = n[0];
             break;
-
         }
 
     }
@@ -235,18 +266,22 @@ class Region {
     draw(ctx, highlighted, selected){
         let p = this.path();
 
-        ctx.lineWidth = 2;
         ctx.strokeStyle = 'red';
-        ctx.stroke(p);
 
         ctx.fillStyle = 'rgba(255 0 0 / 20%)'
         if (highlighted || selected){
             ctx.fillStyle = 'rgba(255 0 0 / 40%)'
         }
 
+        ctx.lineWidth = 1;
+
         if (this.closed){
             ctx.fill(p)
+        } else {
+            ctx.lineWidth = 2;
         }
+
+        ctx.stroke(p);
 
         if (selected){
             this.nodes.forEach(n => n.draw(ctx))
