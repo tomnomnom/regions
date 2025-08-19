@@ -40,10 +40,13 @@ stage.addEventListener('mouseup', e => {
 
     if (state.highlightedRegion != null){
         state.selectedRegion = state.highlightedRegion;
-        return
+        return;
     }
 
-    state.selectedRegion = null;
+    if (state.selectedRegion != null){
+        state.selectedRegion = null;
+        return;
+    }
 
     if (state.newRegion == null){
         state.newRegion = new Region();
@@ -140,22 +143,54 @@ class Region {
     nodes = [];
     closed = false;
     selectedNode = null;
+    editMode = null;
+    moveState = {
+        lastX: 0,
+        lastY: 0,
+    };
 
     mouseup() {
         this.selectedNode = null;
+        this.editMode = null;
     }
 
     mousedown(ctx, x, y){
-        if (this.selectedNode == null){
+        switch (this.editMode){
+
+        case "node":
+            this.selectedNode.x = x;
+            this.selectedNode.y = y;
+            break;
+
+        case "move":
+            let dx = this.moveState.lastX - x;
+            let dy = this.moveState.lastY - y;
+
+            this.nodes.forEach(n => {
+                n.x -= dx;
+                n.y -= dy;
+            })
+
+            this.moveState.lastX = x;
+            this.moveState.lastY = y;
+            break;
+
+        case null:
             let n = this.nodes.filter(n => n.isPointInside(ctx, x, y))
+
             if (n.length == 0){
-                return;
+                this.editMode = "move";
+                this.moveState.lastX = x;
+                this.moveState.lastY = y;
+                return
             }
+
+            this.editMode = "node";
             this.selectedNode = n[0];
+            break;
+
         }
 
-        this.selectedNode.x = x;
-        this.selectedNode.y = y;
     }
 
     addPoint(x, y){
