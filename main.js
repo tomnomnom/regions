@@ -33,15 +33,6 @@ stage.addEventListener('mousemove', e => {
 
 stage.addEventListener('mousedown', e => {
     state.mousedown = true;
-});
-
-stage.addEventListener('mouseup', e => {
-    state.mousedown = false;
-    
-    if (state.newRegion != null){
-        state.newRegion.addPoint(state.x, state.y);
-        return;
-    }
 
     if (state.highlightedRegion != null){
         state.selectedRegion = state.highlightedRegion;
@@ -52,12 +43,29 @@ stage.addEventListener('mouseup', e => {
         state.selectedRegion = null;
         return;
     }
+});
+
+stage.addEventListener('mouseup', e => {
+    state.mousedown = false;
+
+    if (state.highlightedRegion != null){
+        return;
+    }
+    
+    if (state.newRegion != null){
+        state.newRegion.addNode(state.x, state.y);
+        return;
+    }
 
     state.newRegion = new Region();
-    state.newRegion.addPoint(state.x, state.y);
+    state.newRegion.addNode(state.x, state.y);
 });
 
 stage.addEventListener('dblclick', e => {
+    if (state.newRegion == null){
+        return;
+    }
+
     if (state.newRegion.nodes.length > 3){
         // remove the Node added by the click before the double
         state.newRegion.nodes.pop();
@@ -75,6 +83,35 @@ window.addEventListener('keydown', e => {
     case 'x':
         state.regions.delete(state.selectedRegion);
         state.selectedRegion = null;
+    case 'd':
+        if (state.selectedRegion == null){
+            break;
+        }
+        const duplicate = state.selectedRegion.clone();
+        duplicate.moveRelative(20, 20);
+        state.regions.add(duplicate);
+        state.selectedRegion = duplicate;
+        break;
+    case 'h':
+        if (state.selectedRegion != null){
+            state.selectedRegion.moveRelative(-1, 0);
+        }
+        break;
+    case 'j':
+        if (state.selectedRegion != null){
+            state.selectedRegion.moveRelative(0, 1);
+        }
+        break;
+    case 'k':
+        if (state.selectedRegion != null){
+            state.selectedRegion.moveRelative(0, -1);
+        }
+        break;
+    case 'l':
+        if (state.selectedRegion != null){
+            state.selectedRegion.moveRelative(1, 0);
+        }
+        break;
     }
 })
 
@@ -83,12 +120,12 @@ const draw = t => {
     ctx.fillRect(0, 0, stage.width, stage.height);
     ctx.drawImage(img, 10, 10);
 
+    state.highlightedRegion = null;
+
     state.regions.forEach(r => {
         if (r.isPointInside(ctx, state.x, state.y)){
             // TODO: only if region is smaller than current highlighted region
             state.highlightedRegion = r;
-        } else if (state.highlightedRegion == r){
-            state.highlightedRegion = null;
         }
     });
 
@@ -161,6 +198,13 @@ class Region {
         lastY: 0,
     };
 
+    clone(){
+        const c = new Region();
+        this.nodes.forEach(n => c.addNode(n.x, n.y));
+        c.closed = true;
+        return c;
+    }
+
     toJSON(){
         return {
             nodes: this.nodes,
@@ -192,13 +236,10 @@ class Region {
             break;
 
         case "move":
-            let dx = this.moveState.lastX - x;
-            let dy = this.moveState.lastY - y;
+            let dx = x - this.moveState.lastX;
+            let dy = y - this.moveState.lastY;
 
-            this.nodes.forEach(n => {
-                n.x -= dx;
-                n.y -= dy;
-            })
+            this.moveRelative(dx, dy);
 
             this.moveState.lastX = x;
             this.moveState.lastY = y;
@@ -224,7 +265,14 @@ class Region {
 
     }
 
-    addPoint(x, y){
+    moveRelative(dx, dy){
+        this.nodes.forEach(n => {
+            n.x += dx;
+            n.y += dy;
+        })
+    }
+
+    addNode(x, y){
         this.nodes.push(new Node(x, y));
     }
 
