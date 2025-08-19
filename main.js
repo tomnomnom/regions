@@ -62,6 +62,12 @@ stage.addEventListener('mouseup', e => {
 });
 
 stage.addEventListener('dblclick', e => {
+
+    if (state.selectedRegion != null){
+        state.selectedRegion.dblclick(ctx, state.x, state.y);
+        return;
+    }
+
     if (state.newRegion == null){
         return;
     }
@@ -116,6 +122,11 @@ window.addEventListener('keydown', e => {
 })
 
 const draw = t => {
+    if (stage.width != img.width || stage.height != img.height){
+        stage.width = img.width;
+        stage.height = img.height;
+    }
+
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, stage.width, stage.height);
     ctx.drawImage(img, 10, 10);
@@ -246,10 +257,10 @@ class Region {
             break;
 
         case null:
-            let n = this.nodes.filter(n => n.isPointInside(ctx, x, y))
-            if (n.length > 0){
+            let n = this.nodes.find(n => n.isPointInside(ctx, x, y))
+            if (n != undefined){
                 this.editMode = "node";
-                this.selectedNode = n[0];
+                this.selectedNode = n;
                 return
             }
             
@@ -262,7 +273,23 @@ class Region {
 
             break;
         }
+    }
 
+    dblclick(ctx, x, y){
+        let i = this.nodes.findIndex(n => n.isPointInside(ctx, x, y));
+        if (i >= 0){
+            this.deleteNode(i);
+            return;
+        }
+    }
+
+    deleteNode(i){
+        this.selectedNode = null;
+        this.nodes = this.nodes.toSpliced(i, 1);
+
+        if (this.nodes.length < 3){
+            state.regions.delete(this);
+        }
     }
 
     moveRelative(dx, dy){
