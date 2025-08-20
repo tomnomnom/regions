@@ -1,3 +1,10 @@
+const strokeStyle = 'rgba(255 255 255 / 70%)';
+const nodeFillStyle = 'rgba(255 255 255 / 100%)';
+const regionStyle = 'rgba(255 255 255 / 20%)';
+const highlightStyle = 'rgba(255 255 255 / 30%)';
+
+const nodeSize = 4;
+
 const stage = document.getElementById('stage');
 const ctx = stage.getContext('2d');
 
@@ -23,7 +30,44 @@ const state = {
     selectedRegion: null,
     newRegion: null,
     mousedown: false,
-}
+    deselected: false,
+};
+
+const saveButton = document.getElementById('save');
+const restoreButton = document.getElementById('restore');
+
+saveButton.addEventListener('click', e => {
+    saveButton.disabled = true;
+
+    fetch('/save.php', {
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json',
+        },
+        body: JSON.stringify([...state.regions]),
+    }).then(r => {
+        saveButton.disabled = false;
+    })
+});
+
+restoreButton.addEventListener('click', e => {
+    restoreButton.disabled = true;
+
+    fetch('/restore.php').then(r => r.json()).then(regions => {
+
+        state.regions = new Set();
+        state.highlightedRegion = null;
+        state.selectedRegion = null;
+        state.newRegion = null;
+
+        regions.forEach(r => {
+            state.regions.add(Region.fromObj(r));
+        })
+
+        restoreButton.disabled = false;
+    });
+
+});
 
 stage.addEventListener('mousemove', e => {
     state.x = e.offsetX;
@@ -41,12 +85,18 @@ stage.addEventListener('mousedown', e => {
 
     if (state.selectedRegion != null){
         state.selectedRegion = null;
+        state.deselected = true;
         return;
     }
 });
 
 stage.addEventListener('mouseup', e => {
     state.mousedown = false;
+
+    if (state.deselected){
+        state.deselected = false;
+        return;
+    }
 
     if (state.highlightedRegion != null){
         return;
@@ -129,12 +179,12 @@ const draw = t => {
 
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, stage.width, stage.height);
-    ctx.drawImage(img, 10, 10);
+    ctx.drawImage(img, 0, 0);
 
     state.highlightedRegion = null;
 
     state.regions.forEach(r => {
-        if (r.isPointInside(ctx, state.x, state.y)){
+        if (state.newRegion == null && r.isPointInside(ctx, state.x, state.y)){
             // TODO: only if region is smaller than current highlighted region
             state.highlightedRegion = r;
         }
@@ -162,7 +212,7 @@ requestAnimationFrame(draw);
 class Node {
     highlighted = false;
     selected = false;
-    size = 4
+    size = nodeSize;
 
     constructor(x, y){
         this.x = x;
@@ -194,8 +244,19 @@ class Node {
     }
 
     draw(ctx){
-        ctx.fillStyle = 'red';
+        ctx.fillStyle = nodeFillStyle;
         ctx.fill(this.path())
+    }
+
+    distance(n){
+        return Math.abs(Math.sqrt(Math.pow(this.x - n.x, 2) + Math.pow(this.y - n.y, 2)));
+    }
+
+    midpoint(n){
+        return new Node(
+            this.x + (n.x - this.x)/2,
+            this.y + (n.y - this.y)/2,
+        );
     }
 }
 
@@ -222,13 +283,12 @@ class Region {
         };
     }
 
-    static fromJSON(raw){
-        const p = JSON.parse(raw)
-        if (!p.hasOwnProperty("nodes")){
-            throw new Error("no nodes in Region JSON")
+    static fromObj(obj){
+        if (!obj.hasOwnProperty("nodes")){
+            throw new Error("no nodes in object")
         }
         let r = new Region();
-        r.nodes = p.nodes.map(n => Node.fromObj(n));
+        r.nodes = obj.nodes.map(n => Node.fromObj(n));
         r.closed = true;
         return r;
     }
@@ -281,6 +341,49 @@ class Region {
             this.deleteNode(i);
             return;
         }
+
+        let lowest = {
+            index: -1,
+            distance: Infinity,
+        };
+
+        for (let i = 0; i < this.nodes.length; i++){
+            let j = i+1;
+            if (j == this.nodes.length){
+                j = 0;
+            }
+            
+            //     p3
+            //     /|
+            //    / | distance
+            //   /  |
+            //  p1------p2
+            let p1 = this.nodes[i];
+            let p2 = this.nodes[j];
+            let p3 = new Node(x, y);
+
+            let mid = p1.midpoint(p2);
+
+            if (p3.distance(mid) > p1.distance(p2)/2){
+                continue;
+            }
+
+            let angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) -
+                        Math.atan2(p3.y - p1.y, p3.x - p1.x);
+
+            let distance = Math.abs(Math.tan(angle) * p3.distance(p1));
+
+            if (distance < lowest.distance){
+                lowest.distance = distance;
+                lowest.index = i;
+            }
+        }
+        
+        if (lowest.distance == Infinity){
+            return;
+        }
+
+        this.nodes = this.nodes.toSpliced(lowest.index+1, 0, new Node(x, y));
     }
 
     deleteNode(i){
@@ -341,11 +444,11 @@ class Region {
     draw(ctx, highlighted, selected){
         let p = this.path();
 
-        ctx.strokeStyle = 'red';
+        ctx.strokeStyle = strokeStyle;
 
-        ctx.fillStyle = 'rgba(255 0 0 / 20%)'
+        ctx.fillStyle = regionStyle;
         if (highlighted || selected){
-            ctx.fillStyle = 'rgba(255 0 0 / 40%)'
+            ctx.fillStyle = highlightStyle;
         }
 
         ctx.lineWidth = 1;
@@ -354,11 +457,11 @@ class Region {
             ctx.fill(p)
         } else {
             ctx.lineWidth = 2;
+            ctx.stroke(p);
         }
 
-        ctx.stroke(p);
-
         if (selected){
+            ctx.stroke(p);
             this.nodes.forEach(n => n.draw(ctx))
         }
     }
